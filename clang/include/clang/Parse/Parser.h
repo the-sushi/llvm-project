@@ -50,6 +50,7 @@ namespace clang {
   struct OMPTraitSelector;
   struct OMPTraitSet;
   class OMPTraitInfo;
+  class LppParser;
 
 /// Parser - This implements a parser for the C family of languages.  After
 /// parsing units of the grammar, productions are invoked to handle whatever has
@@ -65,6 +66,7 @@ class Parser : public CodeCompletionHandler {
   friend class ObjCDeclContextSwitch;
   friend class ParenBraceBracketBalancer;
   friend class BalancedDelimiterTracker;
+  friend class LppParser;
 
   Preprocessor &PP;
 
