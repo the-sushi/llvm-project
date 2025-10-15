@@ -25,6 +25,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/NoFolder.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/IR/ProfDataUtils.h"
 #include "llvm/IR/Statepoint.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
@@ -411,28 +412,16 @@ CallInst *IRBuilderBase::CreateFPMinimumReduce(Value *Src) {
   return getReductionIntrinsic(Intrinsic::vector_reduce_fminimum, Src);
 }
 
-CallInst *IRBuilderBase::CreateLifetimeStart(Value *Ptr, ConstantInt *Size) {
+CallInst *IRBuilderBase::CreateLifetimeStart(Value *Ptr) {
   assert(isa<PointerType>(Ptr->getType()) &&
          "lifetime.start only applies to pointers.");
-  if (!Size)
-    Size = getInt64(-1);
-  else
-    assert(Size->getType() == getInt64Ty() &&
-           "lifetime.start requires the size to be an i64");
-  Value *Ops[] = { Size, Ptr };
-  return CreateIntrinsic(Intrinsic::lifetime_start, {Ptr->getType()}, Ops);
+  return CreateIntrinsic(Intrinsic::lifetime_start, {Ptr->getType()}, {Ptr});
 }
 
-CallInst *IRBuilderBase::CreateLifetimeEnd(Value *Ptr, ConstantInt *Size) {
+CallInst *IRBuilderBase::CreateLifetimeEnd(Value *Ptr) {
   assert(isa<PointerType>(Ptr->getType()) &&
          "lifetime.end only applies to pointers.");
-  if (!Size)
-    Size = getInt64(-1);
-  else
-    assert(Size->getType() == getInt64Ty() &&
-           "lifetime.end requires the size to be an i64");
-  Value *Ops[] = { Size, Ptr };
-  return CreateIntrinsic(Intrinsic::lifetime_end, {Ptr->getType()}, Ops);
+  return CreateIntrinsic(Intrinsic::lifetime_end, {Ptr->getType()}, {Ptr});
 }
 
 CallInst *IRBuilderBase::CreateInvariantStart(Value *Ptr, ConstantInt *Size) {
@@ -1014,6 +1003,18 @@ CallInst *IRBuilderBase::CreateConstrainedFPCall(
   return C;
 }
 
+Value *IRBuilderBase::CreateSelectWithUnknownProfile(Value *C, Value *True,
+                                                     Value *False,
+                                                     StringRef PassName,
+                                                     const Twine &Name) {
+  Value *Ret = CreateSelectFMF(C, True, False, {}, Name);
+  if (auto *SI = dyn_cast<SelectInst>(Ret)) {
+    setExplicitlyUnknownBranchWeightsIfProfiled(
+        *SI, *SI->getParent()->getParent(), PassName);
+  }
+  return Ret;
+}
+
 Value *IRBuilderBase::CreateSelect(Value *C, Value *True, Value *False,
                                    const Twine &Name, Instruction *MDFrom) {
   return CreateSelectFMF(C, True, False, {}, Name, MDFrom);
@@ -1144,9 +1145,32 @@ Value *IRBuilderBase::CreateVectorSplat(ElementCount EC, Value *V,
   return CreateShuffleVector(V, Zeros, Name + ".splat");
 }
 
-Value *IRBuilderBase::CreatePreserveArrayAccessIndex(
-    Type *ElTy, Value *Base, unsigned Dimension, unsigned LastIndex,
-    MDNode *DbgInfo) {
+Value *IRBuilderBase::CreateVectorInterleave(ArrayRef<Value *> Ops,
+                                             const Twine &Name) {
+  assert(Ops.size() >= 2 && Ops.size() <= 8 &&
+         "Unexpected number of operands to interleave");
+
+  // Make sure all operands are the same type.
+  assert(isa<VectorType>(Ops[0]->getType()) && "Unexpected type");
+
+#ifndef NDEBUG
+  for (unsigned I = 1; I < Ops.size(); I++) {
+    assert(Ops[I]->getType() == Ops[0]->getType() &&
+           "Vector interleave expects matching operand types!");
+  }
+#endif
+
+  unsigned IID = Intrinsic::getInterleaveIntrinsicID(Ops.size());
+  auto *SubvecTy = cast<VectorType>(Ops[0]->getType());
+  Type *DestTy = VectorType::get(SubvecTy->getElementType(),
+                                 SubvecTy->getElementCount() * Ops.size());
+  return CreateIntrinsic(IID, {DestTy}, Ops, {}, Name);
+}
+
+Value *IRBuilderBase::CreatePreserveArrayAccessIndex(Type *ElTy, Value *Base,
+                                                     unsigned Dimension,
+                                                     unsigned LastIndex,
+                                                     MDNode *DbgInfo) {
   auto *BaseType = Base->getType();
   assert(isa<PointerType>(BaseType) &&
          "Invalid Base ptr type for preserve.array.access.index.");
