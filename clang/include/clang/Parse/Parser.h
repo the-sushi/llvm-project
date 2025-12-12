@@ -5224,11 +5224,7 @@ private:
   ///         assignment-expression
   ///         '{' ...
   /// \endverbatim
-  ExprResult ParseInitializer() {
-    if (Tok.isNot(tok::l_brace))
-      return ParseAssignmentExpression();
-    return ParseBraceInitializer();
-  }
+  ExprResult ParseInitializer(Decl *DeclForInitializer = nullptr);
 
   /// MayBeDesignationStart - Return true if the current token might be the
   /// start of a designator.  If we can tell it is impossible that it is a
@@ -7505,6 +7501,16 @@ public:
 
   StmtResult ParseBreakOrContinueStatement(bool IsContinue);
 
+  /// ParseDeferStatement
+  /// \verbatim
+  ///       defer-statement:
+  ///         '_Defer' deferred-block
+  ///
+  ///       deferred-block:
+  ///         unlabeled-statement
+  /// \endverbatim
+  StmtResult ParseDeferStatement(SourceLocation *TrailingElseLoc);
+
   StmtResult ParsePragmaLoopHint(StmtVector &Stmts, ParsedStmtContext StmtCtx,
                                  SourceLocation *TrailingElseLoc,
                                  ParsedAttributes &Attrs,
@@ -7678,7 +7684,7 @@ private:
   /// [GNU] asm-clobbers:
   ///         asm-string-literal
   ///         asm-clobbers ',' asm-string-literal
-  /// \endverbatim 
+  /// \endverbatim
   ///
   StmtResult ParseAsmStatement(bool &msAsm);
 
