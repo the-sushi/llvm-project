@@ -103,6 +103,8 @@ list(APPEND CLANG_TEST_DEPS
   clang-linker-wrapper
   clang-nvlink-wrapper
   clang-offload-bundler
+  clang-ssaf-format
+  clang-ssaf-linker
   clang-sycl-linker
   diagtool
   hmaptool
@@ -184,6 +186,10 @@ if( NOT CLANG_BUILT_STANDALONE )
     split-file
     yaml2obj
     )
+
+  if(TARGET lld)
+    list(APPEND CLANG_TEST_DEPS lld)
+  endif()
 
   if(TARGET llvm-lto)
     list(APPEND CLANG_TEST_DEPS llvm-lto)
